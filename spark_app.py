@@ -81,7 +81,7 @@ print("DATA_DIR =", DATA_DIR, [str(s.getPath()) for s in fs.listStatus(Path(HDFS
 
 # ---------------------------------------------------------------- 3. чтение и count
 # Явная схема: без inferSchema, чтобы не было лишних джобов на вывод схемы.
-rratings_schema = StructType(
+ratings_schema = StructType(
     [
         StructField("userId", IntegerType()),
         StructField("movieId", IntegerType()),
