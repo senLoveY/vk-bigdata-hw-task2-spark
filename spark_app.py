@@ -80,7 +80,6 @@ DATA_DIR = f"{HDFS}{HDFS_DIR}"
 print("DATA_DIR =", DATA_DIR, [str(s.getPath()) for s in fs.listStatus(Path(HDFS_DIR))])
 
 # ---------------------------------------------------------------- 3. чтение и count
-# Явная схема: без inferSchema, чтобы не было лишних джобов на вывод схемы.
 ratings_schema = StructType(
     [
         StructField("userId", IntegerType()),
@@ -139,6 +138,13 @@ if DELTA_MODE == "abs":
 elif DELTA_MODE == "per_user":
     delta = (
         joined.groupBy("userId").agg(F.avg("d").alias("a")).agg(F.avg("a")).first()[0]
+    )
+elif DELTA_MODE == "per_pair":
+    delta = (
+        joined.groupBy("userId", "movieId")
+        .agg(F.avg("d").alias("a"))
+        .agg(F.avg("a"))
+        .first()[0]
     )
 else:
     delta = joined.agg(F.avg(-F.col("d"))).first()[0]
