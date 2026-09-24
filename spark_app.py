@@ -110,7 +110,7 @@ for job_id in tracker.getJobIdsForGroup("step3"):
     stage_ids.update(tracker.getJobInfo(job_id).stageIds)
 for sid in stage_ids:
     info = tracker.getStageInfo(sid)
-    if info is not None and info.numCompleteTasks > 0:
+    if info is not None and info.numCompletedTasks > 0:
         done_stages += 1
         n_tasks += info.numTasks
 write_line(f"stages:{done_stages} tasks:{n_tasks}")
