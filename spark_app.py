@@ -2,7 +2,6 @@ import math
 import os
 
 import numpy as np
-from pyspark import SparkListener
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import (
     DoubleType,
@@ -82,7 +81,7 @@ print("DATA_DIR =", DATA_DIR, [str(s.getPath()) for s in fs.listStatus(Path(HDFS
 
 # ---------------------------------------------------------------- 3. чтение и count
 # Явная схема: без inferSchema, чтобы не было лишних джобов на вывод схемы.
-ratings_schema = StructType(
+rratings_schema = StructType(
     [
         StructField("userId", IntegerType()),
         StructField("movieId", IntegerType()),
@@ -102,25 +101,21 @@ tags_schema = StructType(
 ratings = spark.read.csv(f"{DATA_DIR}/ratings.csv", header=True, schema=ratings_schema)
 tags = spark.read.csv(f"{DATA_DIR}/tags.csv", header=True, schema=tags_schema)
 
-
-class StageTaskListener(SparkListener):
-    def __init__(self):
-        self.stages = set()
-        self.tasks = 0
-
-    def onTaskEnd(self, taskEnd):
-        self.stages.add(taskEnd.stageId())
-        self.tasks += 1
-
-
-listener = StageTaskListener()
-sc._jsc.sc().addSparkListener(listener)
-
+sc.setJobGroup("step3", "count ratings/tags")
 n_ratings = ratings.count()
 n_tags = tags.count()
 print("ratings:", n_ratings, "tags:", n_tags)
 
-write_line(f"stages:{len(listener.stages)} tasks:{listener.tasks}")
+tracker = sc.statusTracker()
+stage_ids, n_tasks, done_stages = set(), 0, 0
+for job_id in tracker.getJobIdsForGroup("step3"):
+    stage_ids.update(tracker.getJobInfo(job_id).stageIds)
+for sid in stage_ids:
+    info = tracker.getStageInfo(sid)
+    if info is not None and info.numCompletedTasks > 0:
+        done_stages += 1
+        n_tasks += info.numTasks
+write_line(f"stages:{done_stages} tasks:{n_tasks}")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
 row = ratings.agg(
