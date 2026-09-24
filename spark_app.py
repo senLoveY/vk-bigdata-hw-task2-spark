@@ -38,7 +38,7 @@ builder = (
     .config("spark.pyspark.python", EXECUTOR_PYTHON)
     .config("spark.executorEnv.PYSPARK_PYTHON", EXECUTOR_PYTHON)
     .config("spark.yarn.appMasterEnv.PYSPARK_PYTHON", EXECUTOR_PYTHON)
-    
+    .config("spark.sql.adaptive.enabled", "false")
 )
 if DRIVER_HOST:
     builder = builder.config("spark.driver.host", DRIVER_HOST).config(
@@ -105,14 +105,15 @@ sc.setJobGroup("step3", "count ratings/tags")
 print("ratings:", ratings.count(), "tags:", tags.count())
 
 tracker = sc.statusTracker()
-stage_ids, n_tasks = set(), 0
+stage_ids, n_tasks, done_stages = set(), 0, 0
 for job_id in tracker.getJobIdsForGroup("step3"):
     stage_ids.update(tracker.getJobInfo(job_id).stageIds)
 for sid in stage_ids:
     info = tracker.getStageInfo(sid)
-    if info is not None:
+    if info is not None and info.numCompleteTasks > 0:
+        done_stages += 1
         n_tasks += info.numTasks
-write_line(f"stages:{len(stage_ids)} tasks:{n_tasks}")
+write_line(f"stages:{done_stages} tasks:{n_tasks}")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
 sc.setJobGroup("step4", "unique")
