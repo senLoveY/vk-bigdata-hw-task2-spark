@@ -1,5 +1,5 @@
 ARG TARGETPLATFORM=linux/amd64
-FROM --platform=$TARGETPLATFORM <image>
+FROM --platform=$TARGETPLATFORM python:3.10-slim-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-17-jre-headless procps \
