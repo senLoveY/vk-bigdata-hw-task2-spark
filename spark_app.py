@@ -102,7 +102,9 @@ ratings = spark.read.csv(f"{DATA_DIR}/ratings.csv", header=True, schema=ratings_
 tags = spark.read.csv(f"{DATA_DIR}/tags.csv", header=True, schema=tags_schema)
 
 sc.setJobGroup("step3", "count ratings/tags")
-print("ratings:", ratings.count(), "tags:", tags.count())
+n_ratings = ratings.rdd.count()
+n_tags = tags.rdd.count()
+print("ratings:", n_ratings, "tags:", n_tags)
 
 tracker = sc.statusTracker()
 stage_ids, n_tasks, done_stages = set(), 0, 0
@@ -140,7 +142,7 @@ elif DELTA_MODE == "per_user":
         joined.groupBy("userId").agg(F.avg("d").alias("a")).agg(F.avg("a")).first()[0]
     )
 else:
-    delta = joined.agg(F.avg("d")).first()[0]
+    delta = joined.agg(F.avg(-F.col("d"))).first()[0]
 write_line(f"timeDifference:{delta}")
 
 # ---------------------------------------------------------------- 7. средняя от средних по юзерам
