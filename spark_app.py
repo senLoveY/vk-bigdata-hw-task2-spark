@@ -2,6 +2,7 @@ import math
 import os
 
 import numpy as np
+from pyspark import SparkListener
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import (
     DoubleType,
@@ -101,24 +102,27 @@ tags_schema = StructType(
 ratings = spark.read.csv(f"{DATA_DIR}/ratings.csv", header=True, schema=ratings_schema)
 tags = spark.read.csv(f"{DATA_DIR}/tags.csv", header=True, schema=tags_schema)
 
-sc.setJobGroup("step3", "count ratings/tags")
-n_ratings = ratings.rdd.count()
-n_tags = tags.rdd.count()
+
+class StageTaskListener(SparkListener):
+    def __init__(self):
+        self.stages = set()
+        self.tasks = 0
+
+    def onTaskEnd(self, taskEnd):
+        self.stages.add(taskEnd.stageId())
+        self.tasks += 1
+
+
+listener = StageTaskListener()
+sc._jsc.sc().addSparkListener(listener)
+
+n_ratings = ratings.count()
+n_tags = tags.count()
 print("ratings:", n_ratings, "tags:", n_tags)
 
-tracker = sc.statusTracker()
-stage_ids, n_tasks, done_stages = set(), 0, 0
-for job_id in tracker.getJobIdsForGroup("step3"):
-    stage_ids.update(tracker.getJobInfo(job_id).stageIds)
-for sid in stage_ids:
-    info = tracker.getStageInfo(sid)
-    if info is not None and info.numCompletedTasks > 0:
-        done_stages += 1
-        n_tasks += info.numTasks
-write_line(f"stages:{done_stages} tasks:{n_tasks}")
+write_line(f"stages:{len(listener.stages)} tasks:{listener.tasks}")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
-sc.setJobGroup("step4", "unique")
 row = ratings.agg(
     F.countDistinct("movieId").alias("f"), F.countDistinct("userId").alias("u")
 ).first()
