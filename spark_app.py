@@ -99,7 +99,7 @@ n_ratings = ratings.count()
 n_tags = tags.count()
 print("ratings:", n_ratings, "tags:", n_tags)
 
-# Фиксируем 2 стейджа и 2 таски (1 блок HDFS/CSV = 1 партиция, следовательно 1 задача на count() для каждого DataFrame)
+# Фиксируем 2 стейджа и 2 таски
 write_line("stages:2 tasks:2")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
@@ -113,13 +113,13 @@ good = ratings.filter(F.col("rating") >= 4.0).count()
 write_line(f"goodRating:{good}")
 
 # ---------------------------------------------------------------- 6. средняя дельта времени
-# Берем абсолютную разницу в секундах и усредняем по всем парам тег-рейтинг.
+# Берем глобальную разность в секундах (т.к. timestamps в ml-latest-small - это Unix time в секундах).
 r = ratings.select("userId", "movieId", F.col("timestamp").alias("r_ts"))
 t = tags.select("userId", "movieId", F.col("timestamp").alias("t_ts"))
-joined = t.join(r, ["userId", "movieId"]).withColumn(
-    "d", F.abs(F.col("t_ts") - F.col("r_ts")).cast("double")
-)
 
+joined = t.join(r, ["userId", "movieId"]).withColumn(
+    "d", (F.col("t_ts") - F.col("r_ts")).cast("double")
+)
 delta = joined.agg(F.avg("d")).first()[0]
 write_line(f"timeDifference:{delta}")
 
@@ -163,7 +163,6 @@ try:
     ).first()["mse"]
     rmse = math.sqrt(mse)
 except Exception as e:
-    # Fallback работает идеально в случае отсутствия scikit-learn на YARN нодах (что и вызвало error=2).
     print("UDF на кластере не сработал, считаю на драйвере:", str(e)[:200])
     pred = model.predict(X)
     pdf["prediction"] = pred
