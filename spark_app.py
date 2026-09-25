@@ -23,7 +23,7 @@ DRIVER_HOST = os.environ.get(
 EXECUTOR_PYTHON = os.environ.get("EXECUTOR_PYTHON", "/usr/local/bin/python3")
 
 # Вариант расчёта timeDifference: "plain" | "abs" | "per_user"
-DELTA_MODE = os.environ.get("DELTA_MODE", "plain")
+DELTA_MODE = os.environ.get("DELTA_MODE", "per_use")
 
 # ---------------------------------------------------------------- 1. SparkSession
 builder = (
@@ -147,7 +147,7 @@ elif DELTA_MODE == "per_pair":
         .first()[0]
     )
 else:
-    delta = joined.agg(F.avg(-F.col("d"))).first()[0]
+    delta = joined.agg(F.avg("d")).first()[0]
 write_line(f"timeDifference:{delta}")
 
 # ---------------------------------------------------------------- 7. средняя от средних по юзерам
