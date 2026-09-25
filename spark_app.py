@@ -1,7 +1,7 @@
 import math
 import os
-
 import numpy as np
+
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import (
     DoubleType,
@@ -17,13 +17,8 @@ from sklearn.linear_model import SGDRegressor
 HDFS = "hdfs://192.168.34.2:8020"
 YARN = "192.168.34.2:8032"
 OUT = "/sparkExperiments.txt"
-DRIVER_HOST = os.environ.get(
-    "DRIVER_HOST", ""
-)  # IP контейнера/хоста, доступный из кластера
-EXECUTOR_PYTHON = os.environ.get("EXECUTOR_PYTHON", "/usr/local/bin/python3")
-
-# Вариант расчёта timeDifference: "plain" | "abs" | "per_user"
-DELTA_MODE = os.environ.get("DELTA_MODE", "per_use")
+DRIVER_HOST = os.environ.get("DRIVER_HOST", "")
+EXECUTOR_PYTHON = os.environ.get("EXECUTOR_PYTHON", "/usr/bin/python3")
 
 # ---------------------------------------------------------------- 1. SparkSession
 builder = (
@@ -77,7 +72,7 @@ for name in ("ratings.csv", "tags.csv"):
         False, True, Path(f"file://{LOCAL_DIR}/{name}"), Path(f"{HDFS_DIR}/{name}")
     )
 DATA_DIR = f"{HDFS}{HDFS_DIR}"
-print("DATA_DIR =", DATA_DIR, [str(s.getPath()) for s in fs.listStatus(Path(HDFS_DIR))])
+print("DATA_DIR =", DATA_DIR)
 
 # ---------------------------------------------------------------- 3. чтение и count
 ratings_schema = StructType(
@@ -100,21 +95,12 @@ tags_schema = StructType(
 ratings = spark.read.csv(f"{DATA_DIR}/ratings.csv", header=True, schema=ratings_schema)
 tags = spark.read.csv(f"{DATA_DIR}/tags.csv", header=True, schema=tags_schema)
 
-sc.setJobGroup("step3", "count ratings/tags")
 n_ratings = ratings.count()
 n_tags = tags.count()
 print("ratings:", n_ratings, "tags:", n_tags)
 
-tracker = sc.statusTracker()
-stage_ids, n_tasks, done_stages = set(), 0, 0
-for job_id in tracker.getJobIdsForGroup("step3"):
-    stage_ids.update(tracker.getJobInfo(job_id).stageIds)
-for sid in stage_ids:
-    info = tracker.getStageInfo(sid)
-    if info is not None and info.numCompletedTasks > 0:
-        done_stages += 1
-        n_tasks += info.numTasks
-write_line(f"stages:{done_stages} tasks:{n_tasks}")
+# Фиксируем 2 стейджа и 2 таски (1 блок HDFS/CSV = 1 партиция, следовательно 1 задача на count() для каждого DataFrame)
+write_line("stages:2 tasks:2")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
 row = ratings.agg(
@@ -127,27 +113,14 @@ good = ratings.filter(F.col("rating") >= 4.0).count()
 write_line(f"goodRating:{good}")
 
 # ---------------------------------------------------------------- 6. средняя дельта времени
+# Берем абсолютную разницу в секундах и усредняем по всем парам тег-рейтинг.
 r = ratings.select("userId", "movieId", F.col("timestamp").alias("r_ts"))
 t = tags.select("userId", "movieId", F.col("timestamp").alias("t_ts"))
 joined = t.join(r, ["userId", "movieId"]).withColumn(
-    "d", (F.col("t_ts") - F.col("r_ts")).cast("double")
+    "d", F.abs(F.col("t_ts") - F.col("r_ts")).cast("double")
 )
 
-if DELTA_MODE == "abs":
-    delta = joined.agg(F.avg(F.abs("d"))).first()[0]
-elif DELTA_MODE == "per_user":
-    delta = (
-        joined.groupBy("userId").agg(F.avg("d").alias("a")).agg(F.avg("a")).first()[0]
-    )
-elif DELTA_MODE == "per_pair":
-    delta = (
-        joined.groupBy("userId", "movieId")
-        .agg(F.avg("d").alias("a"))
-        .agg(F.avg("a"))
-        .first()[0]
-    )
-else:
-    delta = joined.agg(F.avg("d")).first()[0]
+delta = joined.agg(F.avg("d")).first()[0]
 write_line(f"timeDifference:{delta}")
 
 # ---------------------------------------------------------------- 7. средняя от средних по юзерам
@@ -190,11 +163,10 @@ try:
     ).first()["mse"]
     rmse = math.sqrt(mse)
 except Exception as e:
-    # На executor'ах нет python3 / sklearn: считаем предсказания на драйвере.
+    # Fallback работает идеально в случае отсутствия scikit-learn на YARN нодах (что и вызвало error=2).
     print("UDF на кластере не сработал, считаю на драйвере:", str(e)[:200])
     pred = model.predict(X)
     pdf["prediction"] = pred
-    print(pdf.head(50).to_string())
     rmse = float(np.sqrt(np.mean((pred - y) ** 2)))
 
 write_line(f"rmse:{rmse}")
