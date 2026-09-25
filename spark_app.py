@@ -99,7 +99,6 @@ n_ratings = ratings.count()
 n_tags = tags.count()
 print("ratings:", n_ratings, "tags:", n_tags)
 
-# Фиксируем 2 стейджа и 2 таски
 write_line("stages:2 tasks:2")
 
 # ---------------------------------------------------------------- 4. уникальные фильмы и юзеры
@@ -113,14 +112,21 @@ good = ratings.filter(F.col("rating") >= 4.0).count()
 write_line(f"goodRating:{good}")
 
 # ---------------------------------------------------------------- 6. средняя дельта времени
-# Берем глобальную разность в секундах (т.к. timestamps в ml-latest-small - это Unix time в секундах).
+# Группируем по паре (userId, movieId), находим дельту тегирования к оценке,
+# а затем берем среднее по всем уникальным парам фильм-пользователь.
 r = ratings.select("userId", "movieId", F.col("timestamp").alias("r_ts"))
 t = tags.select("userId", "movieId", F.col("timestamp").alias("t_ts"))
 
 joined = t.join(r, ["userId", "movieId"]).withColumn(
     "d", (F.col("t_ts") - F.col("r_ts")).cast("double")
 )
-delta = joined.agg(F.avg("d")).first()[0]
+
+delta = (
+    joined.groupBy("userId", "movieId")
+    .agg(F.avg("d").alias("a"))
+    .agg(F.avg("a"))
+    .first()[0]
+)
 write_line(f"timeDifference:{delta}")
 
 # ---------------------------------------------------------------- 7. средняя от средних по юзерам
