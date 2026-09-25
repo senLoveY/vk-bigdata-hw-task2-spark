@@ -112,15 +112,14 @@ good = ratings.filter(F.col("rating") >= 4.0).count()
 write_line(f"goodRating:{good}")
 
 # ---------------------------------------------------------------- 6. средняя дельта времени
-# Абсолютная разница во времени, усредненная сначала по каждому пользователю, затем среднее среди пользователей
+# Порядок ratings - tags: средняя разность между временем выставления оценки и временем тегирования
 r = ratings.select("userId", "movieId", F.col("timestamp").alias("r_ts"))
 t = tags.select("userId", "movieId", F.col("timestamp").alias("t_ts"))
 
-joined = t.join(r, ["userId", "movieId"]).withColumn(
-    "d", F.abs(F.col("t_ts") - F.col("r_ts")).cast("double")
+joined = r.join(t, ["userId", "movieId"]).withColumn(
+    "d", (F.col("r_ts") - F.col("t_ts")).cast("double")
 )
-
-delta = joined.groupBy("userId").agg(F.avg("d").alias("a")).agg(F.avg("a")).first()[0]
+delta = joined.agg(F.avg("d")).first()[0]
 write_line(f"timeDifference:{delta}")
 
 # ---------------------------------------------------------------- 7. средняя от средних по юзерам
